@@ -62,4 +62,5 @@ When refactoring: do NOT change business logic, only improve structure.
 **Rules:**
 - Commit after the task is completed and I have tested it OK
 - Commit message: Conventional Commits, in English
-- DO NOT automatically push unless I tell you to push
+- After committing, always push the branch to remote
+- Always push both `develop` and the feature branch
