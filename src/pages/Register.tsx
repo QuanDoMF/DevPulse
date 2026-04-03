@@ -30,6 +30,8 @@ export function Register() {
     }
 
     dispatch(register({ email, password, name: name || undefined }));
+    setPassword("");
+    setConfirm("");
   };
 
   const displayError = localError || error;

@@ -6,20 +6,8 @@ const api = axios.create({
   withCredentials: true,
 });
 
-// Auto-refresh on 401
-let isRefreshing = false;
-let failedQueue: Array<{
-  resolve: (value?: unknown) => void;
-  reject: (reason?: unknown) => void;
-}> = [];
-
-function processQueue(error: unknown) {
-  failedQueue.forEach((p) => {
-    if (error) p.reject(error);
-    else p.resolve();
-  });
-  failedQueue = [];
-}
+// Single-promise refresh to prevent race conditions
+let refreshPromise: Promise<void> | null = null;
 
 api.interceptors.response.use(
   (response) => response,
@@ -32,25 +20,35 @@ api.interceptors.response.use(
       !originalRequest.url?.includes("/auth/refresh") &&
       !originalRequest.url?.includes("/auth/login")
     ) {
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        }).then(() => api(originalRequest));
+      originalRequest._retry = true;
+
+      // If a refresh is already in progress, wait for it
+      if (refreshPromise) {
+        try {
+          await refreshPromise;
+          return api(originalRequest);
+        } catch {
+          return Promise.reject(error);
+        }
       }
 
-      originalRequest._retry = true;
-      isRefreshing = true;
+      // Start a new refresh
+      refreshPromise = api
+        .post("/auth/refresh")
+        .then(() => {})
+        .catch((refreshError) => {
+          window.location.href = "/login";
+          throw refreshError;
+        })
+        .finally(() => {
+          refreshPromise = null;
+        });
 
       try {
-        await api.post("/auth/refresh");
-        processQueue(null);
+        await refreshPromise;
         return api(originalRequest);
-      } catch (refreshError) {
-        processQueue(refreshError);
-        window.location.href = "/login";
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
+      } catch {
+        return Promise.reject(error);
       }
     }
 
