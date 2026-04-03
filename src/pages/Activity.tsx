@@ -1,6 +1,8 @@
-import { useState, useMemo } from "react";
-import { mockGitActivities } from "@/mocks/data";
+import { useState, useMemo, useEffect } from "react";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { fetchGitHubData } from "@/store/githubSlice";
 import type { GitActivity } from "@/types";
+import { useNavigate } from "react-router-dom";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -101,17 +103,27 @@ function formatTimestamp(timestamp: string): string {
 }
 
 export function Activity() {
+  const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+  const { activities, loading, error, configured } = useAppSelector((s) => s.github);
+
   const [filter, setFilter] = useState<FilterValue>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
+  useEffect(() => {
+    if (configured && activities.length === 0 && !loading) {
+      dispatch(fetchGitHubData());
+    }
+  }, [configured, activities.length, loading, dispatch]);
+
   const filtered = useMemo(() => {
-    return mockGitActivities.filter((a) => {
+    return activities.filter((a) => {
       if (!matchesFilter(a.type, filter)) return false;
       if (search && !a.message.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [filter, search]);
+  }, [activities, filter, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
@@ -129,6 +141,51 @@ export function Activity() {
     setSearch(value);
     setPage(1);
   };
+
+  if (!configured) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold text-white">Activity</h1>
+        <div className="flex flex-col items-center justify-center rounded-xl border border-gray-800 bg-gray-900 px-6 py-16 text-center">
+          <p className="text-sm text-gray-400">Connect GitHub in Settings to see activity.</p>
+          <button
+            onClick={() => navigate("/settings")}
+            className="mt-4 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600"
+          >
+            Go to Settings
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading && activities.length === 0) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold text-white">Activity</h1>
+        <div className="flex items-center justify-center py-16">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-700 border-t-indigo-500" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold text-white">Activity</h1>
+        <div className="rounded-xl border border-red-800 bg-red-900/20 px-6 py-4 text-sm text-red-400">
+          {error}
+        </div>
+        <button
+          onClick={() => dispatch(fetchGitHubData())}
+          className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
