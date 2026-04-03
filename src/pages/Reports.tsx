@@ -1,6 +1,8 @@
-import { useState, useMemo } from "react";
-import { mockWeeklyReports, mockDailyStats } from "@/mocks/data";
-import type { WeeklyReport } from "@/types";
+import { useState, useMemo, useEffect } from "react";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { fetchGitHubData } from "@/store/githubSlice";
+import type { WeeklyReport, DailyStats } from "@/types";
+import { useNavigate } from "react-router-dom";
 
 function formatWeekRange(weekStart: string): string {
   const start = new Date(weekStart);
@@ -11,12 +13,12 @@ function formatWeekRange(weekStart: string): string {
   return `${fmt(start)} – ${fmt(end)}`;
 }
 
-function getWeekStats(weekStart: string) {
+function getWeekStats(weekStart: string, dailyStats: DailyStats[]) {
   const start = new Date(weekStart);
   const end = new Date(start);
   end.setDate(end.getDate() + 6);
 
-  const days = mockDailyStats.filter((d) => {
+  const days = dailyStats.filter((d) => {
     const date = new Date(d.date);
     return date >= start && date <= end;
   });
@@ -30,12 +32,14 @@ function getWeekStats(weekStart: string) {
 
 function ReportCard({
   report,
+  dailyStats,
   onClick,
 }: {
   report: WeeklyReport;
+  dailyStats: DailyStats[];
   onClick: () => void;
 }) {
-  const weekStats = useMemo(() => getWeekStats(report.weekStart), [report.weekStart]);
+  const weekStats = useMemo(() => getWeekStats(report.weekStart, dailyStats), [report.weekStart, dailyStats]);
 
   return (
     <button
@@ -103,12 +107,14 @@ function ReportCard({
 
 function ReportDetail({
   report,
+  dailyStats,
   onBack,
 }: {
   report: WeeklyReport;
+  dailyStats: DailyStats[];
   onBack: () => void;
 }) {
-  const weekStats = useMemo(() => getWeekStats(report.weekStart), [report.weekStart]);
+  const weekStats = useMemo(() => getWeekStats(report.weekStart, dailyStats), [report.weekStart, dailyStats]);
 
   return (
     <div className="space-y-6">
@@ -179,12 +185,68 @@ function ReportDetail({
 }
 
 export function Reports() {
+  const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+  const { weeklyReports, dailyStats, loading, error, configured } = useAppSelector((s) => s.github);
+
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (configured && weeklyReports.length === 0 && !loading) {
+      dispatch(fetchGitHubData());
+    }
+  }, [configured, weeklyReports.length, loading, dispatch]);
+
+  if (!configured) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold text-white">Weekly Reports</h1>
+        <div className="flex flex-col items-center justify-center rounded-xl border border-gray-800 bg-gray-900 px-6 py-16 text-center">
+          <p className="text-sm text-gray-400">Connect GitHub in Settings to see reports.</p>
+          <button
+            onClick={() => navigate("/settings")}
+            className="mt-4 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600"
+          >
+            Go to Settings
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading && weeklyReports.length === 0) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold text-white">Weekly Reports</h1>
+        <div className="flex items-center justify-center py-16">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-700 border-t-indigo-500" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold text-white">Weekly Reports</h1>
+        <div className="rounded-xl border border-red-800 bg-red-900/20 px-6 py-4 text-sm text-red-400">
+          {error}
+        </div>
+        <button
+          onClick={() => dispatch(fetchGitHubData())}
+          className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   if (selectedIndex !== null) {
     return (
       <ReportDetail
-        report={mockWeeklyReports[selectedIndex]}
+        report={weeklyReports[selectedIndex]}
+        dailyStats={dailyStats}
         onBack={() => setSelectedIndex(null)}
       />
     );
@@ -193,11 +255,20 @@ export function Reports() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold text-white">Weekly Reports</h1>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {mockWeeklyReports.map((report, i) => (
-          <ReportCard key={report.weekStart} report={report} onClick={() => setSelectedIndex(i)} />
-        ))}
-      </div>
+      {weeklyReports.length === 0 ? (
+        <p className="text-sm text-gray-500">No reports available yet.</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {weeklyReports.map((report, i) => (
+            <ReportCard
+              key={report.weekStart}
+              report={report}
+              dailyStats={dailyStats}
+              onClick={() => setSelectedIndex(i)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

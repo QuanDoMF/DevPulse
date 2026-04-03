@@ -1,3 +1,14 @@
+export interface GitHubConfig {
+  token: string;
+  owner: string;
+  repo: string;
+}
+
+export interface GitHubRepoConfig {
+  owner: string;
+  repo: string;
+}
+
 export interface GitActivity {
   id: number;
   type: "commit" | "pr_opened" | "pr_merged" | "pr_closed" | "review" | "issue";
