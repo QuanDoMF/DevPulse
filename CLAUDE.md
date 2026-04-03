@@ -64,3 +64,9 @@ When refactoring: do NOT change business logic, only improve structure.
 - Commit message: Conventional Commits, in English
 - After committing, always push the branch to remote
 - Always push both `develop` and the feature branch
+
+**Automation (Claude handles entirely):**
+- Create feature/fix branches from `develop`
+- Commit, push, create PR, and merge into `develop` via `gh` CLI
+- Delete feature branch after merge
+- User only reviews UI at localhost — all git operations are automated
