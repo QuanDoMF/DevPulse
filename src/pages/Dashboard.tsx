@@ -1,6 +1,9 @@
+import { useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { mockDailyStats, mockGitActivities } from "@/mocks/data";
-import type { GitActivity } from "@/types";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { fetchGitHubData } from "@/store/githubSlice";
+import type { GitActivity, DailyStats } from "@/types";
+import { useNavigate } from "react-router-dom";
 
 // --- StatsCard ---
 
@@ -34,8 +37,8 @@ function StatsCard({ icon, label, value, change }: StatsCardProps) {
 
 // --- CommitsChart ---
 
-function CommitsChart() {
-  const chartData = [...mockDailyStats].reverse().map((d) => ({
+function CommitsChart({ dailyStats }: { dailyStats: DailyStats[] }) {
+  const chartData = [...dailyStats].reverse().map((d) => ({
     date: new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     commits: d.commits,
   }));
@@ -75,9 +78,9 @@ function CommitsChart() {
 // --- ActivityFeed ---
 
 function timeAgo(timestamp: string): string {
-  const now = new Date("2026-04-03T12:00:00Z");
-  const then = new Date(timestamp);
-  const seconds = Math.floor((now.getTime() - then.getTime()) / 1000);
+  const now = Date.now();
+  const then = new Date(timestamp).getTime();
+  const seconds = Math.floor((now - then) / 1000);
 
   if (seconds < 60) return "just now";
   const minutes = Math.floor(seconds / 60);
@@ -143,8 +146,17 @@ function activityIcon(type: GitActivity["type"]) {
   }
 }
 
-function ActivityFeed() {
-  const recentActivities = mockGitActivities.slice(0, 10);
+function ActivityFeed({ activities }: { activities: GitActivity[] }) {
+  const recentActivities = activities.slice(0, 10);
+
+  if (recentActivities.length === 0) {
+    return (
+      <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+        <h2 className="mb-4 text-lg font-semibold text-white">Recent Activity</h2>
+        <p className="text-sm text-gray-500">No recent activity found.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
@@ -171,11 +183,11 @@ function ActivityFeed() {
 
 // --- Stats computation ---
 
-function computeStats() {
-  const thisWeek = mockDailyStats.slice(0, 7);
-  const lastWeek = mockDailyStats.slice(7, 14);
+function computeStats(dailyStats: DailyStats[]) {
+  const thisWeek = dailyStats.slice(0, 7);
+  const lastWeek = dailyStats.slice(7, 14);
 
-  const sum = (data: typeof mockDailyStats, key: keyof (typeof mockDailyStats)[0]) =>
+  const sum = (data: DailyStats[], key: keyof DailyStats) =>
     data.reduce((acc, d) => acc + (d[key] as number), 0);
 
   const thisCommits = sum(thisWeek, "commits");
@@ -211,10 +223,72 @@ function computeStats() {
   };
 }
 
+// --- Not configured prompt ---
+
+function ConfigurePrompt() {
+  const navigate = useNavigate();
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-gray-800 bg-gray-900 px-6 py-16 text-center">
+      <svg className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+      </svg>
+      <h2 className="mt-4 text-lg font-semibold text-white">Connect GitHub</h2>
+      <p className="mt-2 max-w-sm text-sm text-gray-400">
+        Configure your GitHub token and repository in Settings to see real activity data.
+      </p>
+      <button
+        onClick={() => navigate("/settings")}
+        className="mt-4 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-600"
+      >
+        Go to Settings
+      </button>
+    </div>
+  );
+}
+
+// --- Loading spinner ---
+
+function LoadingSpinner() {
+  return (
+    <div className="flex items-center justify-center py-16">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-700 border-t-indigo-500" />
+    </div>
+  );
+}
+
 // --- Dashboard ---
 
 export function Dashboard() {
-  const stats = computeStats();
+  const dispatch = useAppDispatch();
+  const { dailyStats, activities, loading, error, configured } = useAppSelector((s) => s.github);
+
+  useEffect(() => {
+    if (configured && dailyStats.length === 0 && !loading) {
+      dispatch(fetchGitHubData());
+    }
+  }, [configured, dailyStats.length, loading, dispatch]);
+
+  if (!configured) return <ConfigurePrompt />;
+  if (loading && dailyStats.length === 0) return <LoadingSpinner />;
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+        <div className="rounded-xl border border-red-800 bg-red-900/20 px-6 py-4 text-sm text-red-400">
+          {error}
+        </div>
+        <button
+          onClick={() => dispatch(fetchGitHubData())}
+          className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const stats = computeStats(dailyStats);
 
   return (
     <div className="space-y-6">
@@ -268,9 +342,9 @@ export function Dashboard() {
       {/* Chart + Activity Feed */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <CommitsChart />
+          <CommitsChart dailyStats={dailyStats} />
         </div>
-        <ActivityFeed />
+        <ActivityFeed activities={activities} />
       </div>
     </div>
   );

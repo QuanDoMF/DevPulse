@@ -42,13 +42,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Components: PascalCase filenames, named exports
 - Commit messages: Conventional Commits
 - API calls go in `src/services/`, never directly in components
+- Code must be clean, readable, and well-structured
+- Follow security best practices (OWASP Top 10)
+
+## Security
+
+- **Secrets in `.env` only** — API tokens, keys, and credentials MUST go in `.env` (via `VITE_` prefix for client-side). NEVER store secrets in `localStorage`, `sessionStorage`, cookies, or hardcode them in source.
+- **No sensitive data in client storage** — `localStorage`/`sessionStorage` may only store non-sensitive preferences (theme, repo name, UI state). Never tokens, passwords, or PII.
+- **Sanitize user input** — Validate and sanitize all external input before rendering or using in API calls. Use parameterized queries for database operations.
+- **Avoid XSS** — Never use `dangerouslySetInnerHTML`. Escape all dynamic content rendered in the DOM.
+- **Minimal token scope** — Request only the minimum permissions needed (e.g., read-only `repo` scope for GitHub).
+- **No secrets in git** — `.env` is gitignored. Never commit tokens, keys, or credentials.
 
 ## Refactoring Context
 When refactoring: do NOT change business logic, only improve structure.
 
 ## Important
 
-- Do NOT commit `.env` (contains DATABASE_URL)
+- Do NOT commit `.env` (contains DATABASE_URL and VITE_GITHUB_TOKEN)
 - Run `prisma:generate` after every schema.prisma change
 
 ## Git Workflow
