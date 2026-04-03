@@ -1,7 +1,8 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import type { GitActivity, DailyStats, WeeklyReport } from "@/types";
 import {
-  getGitHubConfig,
+  getRepoConfig,
+  getTokenStatus,
   fetchActivities,
   fetchDailyStats,
   buildWeeklyReports,
@@ -22,20 +23,25 @@ const initialState: GitHubState = {
   weeklyReports: [],
   loading: false,
   error: null,
-  configured: !!getGitHubConfig(),
+  configured: false,
 };
 
 export const fetchGitHubData = createAsyncThunk(
   "github/fetchData",
   async (_, { rejectWithValue }) => {
-    const config = getGitHubConfig();
-    if (!config) {
-      return rejectWithValue("GitHub not configured. Go to Settings to connect.");
+    const repoConfig = getRepoConfig();
+    if (!repoConfig) {
+      return rejectWithValue("Repository not configured. Go to Settings.");
+    }
+
+    const tokenReady = await getTokenStatus();
+    if (!tokenReady) {
+      return rejectWithValue("GitHub token not configured. Go to Settings.");
     }
 
     const [activities, dailyStats] = await Promise.all([
-      fetchActivities(config),
-      fetchDailyStats(config),
+      fetchActivities(repoConfig.owner, repoConfig.repo),
+      fetchDailyStats(repoConfig.owner, repoConfig.repo),
     ]);
 
     const weeklyReports = buildWeeklyReports(dailyStats, activities);
@@ -74,7 +80,8 @@ const githubSlice = createSlice({
       })
       .addCase(fetchGitHubData.rejected, (state, action) => {
         state.loading = false;
-        state.error = (action.payload as string) || action.error.message || "Failed to fetch data";
+        state.error =
+          (action.payload as string) || action.error.message || "Failed to fetch data";
       });
   },
 });
