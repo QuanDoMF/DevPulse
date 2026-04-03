@@ -5,12 +5,14 @@ import * as authService from "@/services/authService";
 interface AuthState {
   user: AuthUser | null;
   loading: boolean;
+  authChecked: boolean;
   error: string | null;
 }
 
 const initialState: AuthState = {
   user: null,
-  loading: true, // start true — checking auth on mount
+  loading: false,
+  authChecked: false,
   error: null,
 };
 
@@ -65,10 +67,12 @@ const authSlice = createSlice({
       })
       .addCase(checkAuth.fulfilled, (state, action) => {
         state.loading = false;
+        state.authChecked = true;
         state.user = action.payload;
       })
       .addCase(checkAuth.rejected, (state) => {
         state.loading = false;
+        state.authChecked = true;
         state.user = null;
       })
       // login

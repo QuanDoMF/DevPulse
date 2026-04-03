@@ -37,7 +37,6 @@ api.interceptors.response.use(
         .post("/auth/refresh")
         .then(() => {})
         .catch((refreshError) => {
-          window.location.href = "/login";
           throw refreshError;
         })
         .finally(() => {

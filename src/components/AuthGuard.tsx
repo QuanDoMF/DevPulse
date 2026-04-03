@@ -5,13 +5,15 @@ import { checkAuth } from "@/store/authSlice";
 
 export function AuthGuard() {
   const dispatch = useAppDispatch();
-  const { user, loading } = useAppSelector((s) => s.auth);
+  const { user, authChecked } = useAppSelector((s) => s.auth);
 
   useEffect(() => {
-    dispatch(checkAuth());
-  }, [dispatch]);
+    if (!authChecked) {
+      dispatch(checkAuth());
+    }
+  }, [dispatch, authChecked]);
 
-  if (loading) {
+  if (!authChecked) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-950">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-700 border-t-indigo-500" />
