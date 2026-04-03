@@ -1,17 +1,35 @@
-import axios from "axios";
-import type { GitActivity, DailyStats, WeeklyReport, GitHubConfig, GitHubRepoConfig } from "@/types";
+import api from "./api";
+import type { GitActivity, DailyStats, WeeklyReport } from "@/types";
 
-const STORAGE_KEY = "devpulse_github_repo";
+// --- GitHub token management (server-side encrypted) ---
 
-function getToken(): string {
-  return import.meta.env.VITE_GITHUB_TOKEN || "";
+export async function saveGitHubToken(token: string): Promise<void> {
+  await api.put("/github/token", { token });
 }
 
-export function getRepoConfig(): GitHubRepoConfig | null {
-  const raw = localStorage.getItem(STORAGE_KEY);
+export async function getTokenStatus(): Promise<boolean> {
+  const { data } = await api.get<{ configured: boolean }>("/github/token/status");
+  return data.configured;
+}
+
+export async function deleteGitHubToken(): Promise<void> {
+  await api.delete("/github/token");
+}
+
+// --- Repo config (non-sensitive, stored in localStorage) ---
+
+const REPO_STORAGE_KEY = "devpulse_github_repo";
+
+export interface RepoConfig {
+  owner: string;
+  repo: string;
+}
+
+export function getRepoConfig(): RepoConfig | null {
+  const raw = localStorage.getItem(REPO_STORAGE_KEY);
   if (!raw) return null;
   try {
-    const config = JSON.parse(raw) as GitHubRepoConfig;
+    const config = JSON.parse(raw) as RepoConfig;
     if (!config.owner || !config.repo) return null;
     return config;
   } catch {
@@ -19,33 +37,11 @@ export function getRepoConfig(): GitHubRepoConfig | null {
   }
 }
 
-export function saveRepoConfig(config: GitHubRepoConfig): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+export function saveRepoConfig(config: RepoConfig): void {
+  localStorage.setItem(REPO_STORAGE_KEY, JSON.stringify(config));
 }
 
-export function getGitHubConfig(): GitHubConfig | null {
-  const token = getToken();
-  if (!token) return null;
-  const repo = getRepoConfig();
-  if (!repo) return null;
-  return { token, owner: repo.owner, repo: repo.repo };
-}
-
-export function isTokenConfigured(): boolean {
-  return getToken().length > 0;
-}
-
-function createClient(token: string) {
-  return axios.create({
-    baseURL: "https://api.github.com",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github.v3+json",
-    },
-  });
-}
-
-// --- Fetch events and map to GitActivity[] ---
+// --- Fetch via server proxy ---
 
 interface GitHubEvent {
   id: string;
@@ -101,16 +97,17 @@ function mapEventToActivity(event: GitHubEvent, index: number): GitActivity | nu
   }
 }
 
-export async function fetchActivities(config: GitHubConfig): Promise<GitActivity[]> {
-  const client = createClient(config.token);
-  const { data } = await client.get<GitHubEvent[]>(
-    `/repos/${config.owner}/${config.repo}/events`,
+export async function fetchActivities(owner: string, repo: string): Promise<GitActivity[]> {
+  const { data } = await api.get<GitHubEvent[]>(
+    `/github/proxy/repos/${owner}/${repo}/events`,
     { params: { per_page: 100 } },
   );
-  return data.map((e, i) => mapEventToActivity(e, i + 1)).filter((a): a is GitActivity => a !== null);
+  return data
+    .map((e, i) => mapEventToActivity(e, i + 1))
+    .filter((a): a is GitActivity => a !== null);
 }
 
-// --- Fetch commits and build DailyStats[] for last 14 days ---
+// --- Fetch commits and build DailyStats[] ---
 
 interface GitHubCommit {
   sha: string;
@@ -125,21 +122,19 @@ interface GitHubPull {
   created_at: string;
 }
 
-export async function fetchDailyStats(config: GitHubConfig): Promise<DailyStats[]> {
-  const client = createClient(config.token);
+export async function fetchDailyStats(owner: string, repo: string): Promise<DailyStats[]> {
   const since = new Date();
   since.setDate(since.getDate() - 14);
 
   const [commitsRes, pullsRes] = await Promise.all([
-    client.get<GitHubCommit[]>(`/repos/${config.owner}/${config.repo}/commits`, {
+    api.get<GitHubCommit[]>(`/github/proxy/repos/${owner}/${repo}/commits`, {
       params: { since: since.toISOString(), per_page: 100 },
     }),
-    client.get<GitHubPull[]>(`/repos/${config.owner}/${config.repo}/pulls`, {
+    api.get<GitHubPull[]>(`/github/proxy/repos/${owner}/${repo}/pulls`, {
       params: { state: "all", sort: "created", direction: "desc", per_page: 100 },
     }),
   ]);
 
-  // Build a map of date → stats
   const statsMap = new Map<string, DailyStats>();
   for (let i = 0; i < 14; i++) {
     const d = new Date();
@@ -157,23 +152,22 @@ export async function fetchDailyStats(config: GitHubConfig): Promise<DailyStats[
     }
   }
 
-  // Fetch line stats for commits that don't have them
+  // Fetch line stats for commits missing them
   const needsStats = commitsRes.data.filter((c) => !c.stats);
   if (needsStats.length > 0 && needsStats.length <= 30) {
-    const detailPromises = needsStats.slice(0, 30).map((c) =>
-      client
-        .get<GitHubCommit>(`/repos/${config.owner}/${config.repo}/commits/${c.sha}`)
-        .then((r) => r.data)
-        .catch(() => null),
+    const details = await Promise.all(
+      needsStats.slice(0, 30).map((c) =>
+        api
+          .get<GitHubCommit>(`/github/proxy/repos/${owner}/${repo}/commits/${c.sha}`)
+          .then((r) => r.data)
+          .catch(() => null),
+      ),
     );
-    const details = await Promise.all(detailPromises);
     for (const detail of details) {
       if (!detail?.stats) continue;
       const date = detail.commit.author.date.slice(0, 10);
       const entry = statsMap.get(date);
-      if (entry) {
-        entry.linesChanged += detail.stats.total;
-      }
+      if (entry) entry.linesChanged += detail.stats.total;
     }
   }
 
@@ -192,7 +186,7 @@ export async function fetchDailyStats(config: GitHubConfig): Promise<DailyStats[
   return Array.from(statsMap.values()).sort((a, b) => b.date.localeCompare(a.date));
 }
 
-// --- Build weekly reports from daily stats ---
+// --- Build weekly reports ---
 
 export function buildWeeklyReports(
   dailyStats: DailyStats[],
@@ -219,11 +213,12 @@ export function buildWeeklyReports(
 
     const highlights = weekActivities.slice(0, 5).map((a) => a.message);
     if (highlights.length === 0) {
-      highlights.push(`${totalCommits} commits, ${totalPRs} PRs, ${totalLines.toLocaleString()} lines changed`);
+      highlights.push(
+        `${totalCommits} commits, ${totalPRs} PRs, ${totalLines.toLocaleString()} lines changed`,
+      );
     }
 
     const summary = `${totalCommits} commits across the week with ${totalPRs} pull requests and ${totalLines.toLocaleString()} lines changed.`;
-
     return { weekStart, summary, highlights };
   }
 

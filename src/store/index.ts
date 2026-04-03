@@ -3,9 +3,11 @@ import projectsReducer from "./projectsSlice";
 import tasksReducer from "./tasksSlice";
 import notesReducer from "./notesSlice";
 import githubReducer from "./githubSlice";
+import authReducer from "./authSlice";
 
 export const store = configureStore({
   reducer: {
+    auth: authReducer,
     projects: projectsReducer,
     tasks: tasksReducer,
     notes: notesReducer,
