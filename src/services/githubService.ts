@@ -41,6 +41,28 @@ export function saveRepoConfig(config: RepoConfig): void {
   localStorage.setItem(REPO_STORAGE_KEY, JSON.stringify(config));
 }
 
+export function clearRepoConfig(): void {
+  localStorage.removeItem(REPO_STORAGE_KEY);
+}
+
+// --- Token hint (non-sensitive masked preview, stored in localStorage) ---
+
+const TOKEN_HINT_KEY = "devpulse_token_hint";
+
+export function saveTokenHint(token: string): void {
+  const prefix = token.slice(0, 4);
+  const suffix = token.slice(-4);
+  localStorage.setItem(TOKEN_HINT_KEY, `${prefix}${"*".repeat(8)}${suffix}`);
+}
+
+export function getTokenHint(): string | null {
+  return localStorage.getItem(TOKEN_HINT_KEY);
+}
+
+export function clearTokenHint(): void {
+  localStorage.removeItem(TOKEN_HINT_KEY);
+}
+
 // --- Fetch via server proxy ---
 
 interface GitHubEvent {

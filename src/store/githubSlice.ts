@@ -39,14 +39,31 @@ export const fetchGitHubData = createAsyncThunk(
       return rejectWithValue("GitHub token not configured. Go to Settings.");
     }
 
-    const [activities, dailyStats] = await Promise.all([
-      fetchActivities(repoConfig.owner, repoConfig.repo),
-      fetchDailyStats(repoConfig.owner, repoConfig.repo),
-    ]);
+    try {
+      const [activities, dailyStats] = await Promise.all([
+        fetchActivities(repoConfig.owner, repoConfig.repo),
+        fetchDailyStats(repoConfig.owner, repoConfig.repo),
+      ]);
 
-    const weeklyReports = buildWeeklyReports(dailyStats, activities);
+      const weeklyReports = buildWeeklyReports(dailyStats, activities);
 
-    return { activities, dailyStats, weeklyReports };
+      return { activities, dailyStats, weeklyReports };
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string }; status?: number } };
+      const status = error.response?.status;
+      const message = error.response?.data?.error;
+
+      if (status === 404) {
+        return rejectWithValue("Repository not found. Please check the owner and repository name.");
+      }
+      if (status === 401) {
+        return rejectWithValue("GitHub authentication failed. Please check your token.");
+      }
+      if (status === 429) {
+        return rejectWithValue("GitHub API rate limit exceeded. Please try again later.");
+      }
+      return rejectWithValue(message || "Failed to fetch data from GitHub.");
+    }
   },
 );
 
