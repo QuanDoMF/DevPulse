@@ -16,6 +16,7 @@ export function Login() {
     e.preventDefault();
     dispatch(clearError());
     dispatch(login({ email, password }));
+    setPassword("");
   };
 
   return (
