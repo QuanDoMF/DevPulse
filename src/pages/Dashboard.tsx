@@ -61,6 +61,7 @@ function CommitsChart({ dailyStats }: { dailyStats: DailyStats[] }) {
             allowDecimals={false}
           />
           <Tooltip
+            cursor={false}
             contentStyle={{
               backgroundColor: "#1f2937",
               border: "1px solid #374151",
@@ -68,7 +69,7 @@ function CommitsChart({ dailyStats }: { dailyStats: DailyStats[] }) {
               color: "#fff",
             }}
           />
-          <Bar dataKey="commits" fill="#6366f1" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="commits" fill="#6366f1" radius={[4, 4, 0, 0]} className="cursor-pointer" />
         </BarChart>
       </ResponsiveContainer>
     </div>
